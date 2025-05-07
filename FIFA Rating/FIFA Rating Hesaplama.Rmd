@@ -1,0 +1,263 @@
+---
+title: "FIFA Rating Hesaplama"
+author: "Ekrem Bayar"
+date: "2025-05-07"
+output: html_document
+---
+
+# Kütüphaneler
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(openxlsx)
+```
+
+# EA Sports FC Data Reviewer
+https://fc-datacollective.ea.com/#opportunities
+
+# FIFA 23 Verisi
+https://www.kaggle.com/datasets/stefanoleone992/fifa-23-complete-player-dataset?select=male_players.csv
+```{r}
+df <- read.csv("fifa23.csv")
+dim(df)
+```
+
+```{r}
+head(df)
+```
+
+```{r}
+str(df)
+```
+
+# Rating Katsayıları
+```{r}
+coef <- read.xlsx("RatingCalculator.xlsx", sheet = 4)
+str(coef)
+unique(coef$POSITION)
+# Striker Coefficients
+coef %>% filter(POSITION == "ST")
+```
+
+# Rating Hesaplama
+
+Değişken seçimi
+```{r}
+temp <- df %>% select(player_id, attacking_crossing:goalkeeping_speed)
+
+length(unique(coef$FIFAMetric))
+ncol(temp)-1
+```
+
+Rating hesaplamasına girecek değişkenlerin seçimi
+```{r}
+temp <- df %>% select(player_id, coef$FIFAMetric) 
+head(temp, 10)
+```
+
+Veri setini geniş formattan uzun formata çevir
+```{r}
+temp <- temp %>% 
+  pivot_longer(!player_id, names_to = "FIFAMetric", values_to = "Value") 
+head(temp, 10)
+```
+
+Rating hesaplamasında kullanılacak katsayıları veri setine ekle
+```{r}
+temp <- temp %>% left_join(coef, by = "FIFAMetric") 
+head(temp, 10)
+```
+
+Katsayılar ile beceri değerlerini çarp
+```{r}
+temp <- temp %>% mutate(Contribution = COEFFICIENT * Value)
+head(temp, 10)
+```
+
+Pozisyon bazlı Rating değerlerini oluştur
+```{r}
+temp <- temp %>% 
+  group_by(player_id, POSITION) %>% 
+  summarise(Rating = round(sum(Contribution, na.rm = T))) %>% 
+  ungroup()
+head(temp, 10)
+```
+
+Veri setini uzun formattan geniş formata çevir
+```{r}
+rating <- temp %>% 
+  pivot_wider(
+    id_cols = player_id, 
+    names_from = POSITION, 
+    values_from = Rating)  
+head(rating, 10)
+```
+
+Değişkenleri pozisyon bazlı sırala
+```{r}
+col_order <- c("GK", "CB", "RB/LB","LM/RM",  "CDM",  "CM",  "CAM","LW/RW", "CF", "ST")
+rating <- rating %>% select(player_id, any_of(col_order))
+head(rating, 10)
+```
+
+En iyi pozisyonu bul
+```{r}
+best_position <- temp %>% 
+  group_by(player_id) %>% 
+  filter(Rating == max(Rating)) %>% 
+  summarise(
+    BestPosition = paste0(POSITION, collapse = ", "), 
+    BestRating = max(Rating)
+  ) %>% 
+  ungroup()
+
+head(best_position, 10)
+```
+Rating ve Best Position veri setlerini birleştir
+```{r}
+res <- left_join(rating, best_position, by = "player_id")
+head(res, 10)
+```
+
+Diğer bilgilerin eklenmesii
+```{r}
+res <- left_join(
+  res, 
+  df %>% 
+    select(player_id, short_name, club_name, player_positions, overall, international_reputation),
+  by = "player_id"
+  ) %>% 
+  select(
+    player_id, short_name, club_name, international_reputation, player_positions, overall, BestPosition, BestRating, col_order
+  )
+head(res, 10)
+```
+
+Uluslararası bilinirlik etkisi
+```{r}
+res <- res %>% mutate(
+      RatingIR = case_when(
+        BestRating >= 51 & international_reputation == 3 ~ BestRating+1, 
+        BestRating >= 36 & BestRating <= 66 & international_reputation == 4 ~ BestRating+1,
+        BestRating >= 67 & BestRating <= 99 & international_reputation == 4 ~ BestRating+2,
+        BestRating >= 24 & BestRating <= 49 & international_reputation == 5 ~ BestRating+1,
+        BestRating >= 50 & BestRating <= 74 & international_reputation == 5 ~ BestRating+2,
+        BestRating >= 75 & BestRating <= 99 & international_reputation == 5 ~ BestRating+3,
+        .default = BestRating
+      )
+    ) %>% 
+  select(
+    c("player_id", "short_name", "club_name", "international_reputation", 
+"player_positions", "BestPosition", "overall", "BestRating", "RatingIR")
+  )
+head(res, 10)
+```
+
+Ne kadar oyuncunun ratingini doğru hesapladık?
+```{r}
+res %>% filter(overall == BestRating) %>% nrow / nrow(res)
+res %>% filter(overall == RatingIR) %>% nrow / nrow(res)
+```
+Oyuncular üzerinden hesaplanan Rating değerleri ile FIFA Overall değerinin incelenmesi
+```{r}
+# Van Dijk
+res %>% filter(player_id == 203376)
+
+# Messi
+res %>% filter(player_id == 158023)
+
+# Arda Güler
+res %>% filter(player_id == 264309)
+
+# Rastgele bir oyuncunun rating değeri
+res %>% filter(player_id == sample(res$player_id, 1))
+```
+
+Ne kadar hata yaptık?
+```{r}
+error <- abs(res$overall - res$RatingIR)
+mean(error)
+sd(error)
+hist(error)
+```
+Ne kadar yakınsadık?
+```{r}
+head(res$RatingIR / res$overall, 10)
+mean(res$RatingIR / res$overall)
+```
+
+# Rating Algoritması
+```{r}
+calculate_rating_wir <- function(player_df, coef){
+  
+  
+  temp <- player_df %>% 
+    select(player_id, coef$FIFAMetric) %>% 
+    pivot_longer(!player_id, names_to = "FIFAMetric", values_to = "Value") %>% 
+    left_join(coef, by = "FIFAMetric") %>% 
+    mutate(Contribution = COEFFICIENT * Value) %>% 
+    group_by(player_id, POSITION) %>% 
+    summarise(Rating = round(sum(Contribution, na.rm = T))) %>% 
+    ungroup()
+  
+  col_order <- c("GK", "CB", "RB/LB","LM/RM",  "CDM",  "CM",  "CAM","LW/RW", "CF", "ST")
+  rating <- temp %>% 
+    pivot_wider(
+      id_cols = player_id, 
+      names_from = POSITION, 
+      values_from = Rating
+    ) %>% 
+    select(player_id, any_of(col_order))
+
+  best_position <- temp %>% 
+    group_by(player_id) %>% 
+    filter(Rating == max(Rating)) %>% 
+    summarise(
+      BestPosition = paste0(POSITION, collapse = ", "), 
+      BestRating = max(Rating)
+    ) %>% 
+    ungroup() 
+  
+  res <- left_join(rating, best_position, by = "player_id") %>% 
+    left_join(
+      df %>% select(player_id, short_name, club_name, player_positions, overall, international_reputation),
+      by = "player_id"
+      ) %>% 
+    select(
+      player_id, short_name, club_name, international_reputation, player_positions, overall, BestPosition, BestRating
+    ) %>% 
+    mutate(
+      RatingIR = case_when(
+        BestRating >= 51 & international_reputation == 3 ~ BestRating+1, 
+        BestRating >= 36 & BestRating <= 66 & international_reputation == 4 ~ BestRating+1,
+        BestRating >= 67 & BestRating <= 99 & international_reputation == 4 ~ BestRating+2,
+        BestRating >= 24 & BestRating <= 49 & international_reputation == 5 ~ BestRating+1,
+        BestRating >= 50 & BestRating <= 74 & international_reputation == 5 ~ BestRating+2,
+        BestRating >= 75 & BestRating <= 99 & international_reputation == 5 ~ BestRating+3,
+        .default = BestRating
+      )
+    ) %>% 
+    select(c("player_id", "short_name", "club_name", "international_reputation", "player_positions", "BestPosition", "overall",  "RatingIR")) 
+
+  return(suppressWarnings(res))
+}
+```
+
+Tüm verinin rating değerlerinin hesaplanması
+```{r}
+overall_calc <- calculate_rating_wir(df, coef)
+head(overall_calc)
+```
+
+Rasgele bir oyuncunun ratinginin hesaplanması
+```{r}
+calculate_rating_wir(df[sample(1:nrow(df), 1), ], coef)
+```
+
+Rasgelene 10 oyuncunun ratinginin hesaplanması
+```{r}
+calculate_rating_wir(df[sample(1:nrow(df), 10), ], coef)
+```
+
+
+
+

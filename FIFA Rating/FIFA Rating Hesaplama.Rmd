@@ -16,6 +16,7 @@ https://fc-datacollective.ea.com/#opportunities
 
 # FIFA 23 Verisi
 https://www.kaggle.com/datasets/stefanoleone992/fifa-23-complete-player-dataset?select=male_players.csv
+
 ```{r}
 df <- read.csv("fifa23.csv")
 dim(df)
@@ -31,7 +32,7 @@ str(df)
 
 # Rating Katsayıları
 ```{r}
-coef <- read.xlsx("RatingCalculator.xlsx", sheet = 4)
+coef <- read.xlsx("RatingCalculator.xlsx", sheet = "metrics")
 str(coef)
 unique(coef$POSITION)
 # Striker Coefficients
@@ -94,7 +95,7 @@ head(rating, 10)
 
 Değişkenleri pozisyon bazlı sırala
 ```{r}
-col_order <- c("GK", "CB", "RB/LB","LM/RM",  "CDM",  "CM",  "CAM","LW/RW", "CF", "ST")
+col_order <- c("GK", "CB", "RB/LB", "RWB/LWB","LM/RM",  "CDM",  "CM",  "CAM","LW/RW", "CF", "ST")
 rating <- rating %>% select(player_id, any_of(col_order))
 head(rating, 10)
 ```
@@ -199,7 +200,7 @@ calculate_rating_wir <- function(player_df, coef){
     summarise(Rating = round(sum(Contribution, na.rm = T))) %>% 
     ungroup()
   
-  col_order <- c("GK", "CB", "RB/LB","LM/RM",  "CDM",  "CM",  "CAM","LW/RW", "CF", "ST")
+  col_order <- c("GK", "CB", "RB/LB", "RWB/LWB", "LM/RM",  "CDM",  "CM",  "CAM","LW/RW", "CF", "ST")
   rating <- temp %>% 
     pivot_wider(
       id_cols = player_id, 
@@ -245,7 +246,7 @@ calculate_rating_wir <- function(player_df, coef){
 Tüm verinin rating değerlerinin hesaplanması
 ```{r}
 overall_calc <- calculate_rating_wir(df, coef)
-head(overall_calc)
+head(overall_calc) 
 ```
 
 Rasgele bir oyuncunun ratinginin hesaplanması

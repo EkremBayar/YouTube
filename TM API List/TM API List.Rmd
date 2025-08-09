@@ -1,0 +1,29 @@
+# Örnek Transfermarkt API Listesi
+
+- *Attributes:* Genel Bilgiler
+https://tmapi-alpha.transfermarkt.technology/attributes
+
+- *Country List*
+https://www.transfermarkt.com/quickselect/countries
+
+- *Country & Competition List*: İngiltere'de bulunan müsabakalar listesi
+https://www.transfermarkt.com/quickselect/competitions/189
+
+- *Competition & Team List*: İspanya La Liga'da bulunan takımlar listesi
+https://www.transfermarkt.com/quickselect/teams/ES1
+
+- *Team & Player List*: Real Madrid'de kadrosunda bulunan oyuncuların listesi
+https://www.transfermarkt.com/quickselect/players/418
+
+- *Competition Details*: Süper Lig örneği
+https://tmapi-alpha.transfermarkt.technology/competitions?ids[]=TR1
+
+- *Team Details*: Fenerbahçe örneği
+https://tmapi-alpha.transfermarkt.technology/clubs?ids[]=36
+
+- *Player Details*: Arda Güler örneği
+https://tmapi-alpha.transfermarkt.technology/players?ids[]=861410
+
+
+
+
